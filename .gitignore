@@ -4,6 +4,7 @@ __pycache__/
 *.pyc
 *.wav
 build/
+bin/
 cmake-build-*/
 models/
 *.ggml

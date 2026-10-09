@@ -1,20 +1,21 @@
 # AI Voice Translator
 
-JUCE app: pick a mic / Virtual Cable, press Listen, talk, pause, ooba replies. No Python, no `.bat`.
+Talk to oobabooga without a record button. Listens to Virtual Cable or a mic, transcribes, sends the turn to ooba.
 
-## On their computer
+## Build
+
+Need Git, CMake, and Visual Studio 2022 with **Desktop development with C++**.
+
+1. Clone this repo.
+2. Double-click `build.bat`.
+3. First run downloads dependencies and compiles. Later runs just rebuild.
+4. You get `bin\AIVoiceTranslator.exe`, and it launches.
+
+## Use
 
 1. Start oobabooga with `--api`.
-2. Send them `AIVoiceTranslator.exe` plus a `models` folder if the model is already downloaded.
-3. Run the exe.
-4. Confirm the input device is **CABLE Output** (or their mic).
-5. Press **Listen** and talk. First run downloads `ggml-base.en.bin` (~140MB) next to the exe.
+2. Pick **CABLE Output** (or your mic) in the app.
+3. Press **Listen**, talk, pause.
+4. First Listen may download `ggml-base.en.bin` (~140MB) next to the exe.
 
-## Build here
-
-```
-cmake -B build -G "Visual Studio 17 2022" -A x64
-cmake --build build --config Release
-```
-
-Exe: `build/AIVoiceTranslator_artefacts/Release/AI Voice Translator.exe`
+Default API: `http://127.0.0.1:5000/v1/chat/completions`
