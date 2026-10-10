@@ -7,10 +7,9 @@ Talk to oobabooga without a record button. Listens to Virtual Cable or a mic, tr
 Need Git, CMake, and Visual Studio 2022 with **Desktop development with C++**.
 
 1. Clone this repo.
-2. Double-click `build.bat`.
-3. First run downloads dependencies and compiles. Later runs just rebuild.
-4. You get `bin\AIVoiceTranslator.exe` plus the VC++ runtime DLLs and `vc_redist.x64.exe`.
-5. Send the client the whole `bin` folder, not just the exe.
+2. **Release (what you send the client):** double-click `build-release.bat`. Zip the whole `bin\Release` folder.
+3. **Debug (you only):** double-click `build-debug.bat`. Output is `bin\Debug`. Do not send that.
+4. First run downloads dependencies and compiles. Later runs just rebuild.
 
 Crashes write `crashes\crash-*.dmp` and `crash-*.txt` next to the exe.
 
