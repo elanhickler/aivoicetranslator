@@ -75,11 +75,16 @@ void MainComponent::resized()
     urlEditor.setBounds (urlRow);
 
     r.removeFromTop (12);
-    log.setBounds (r.removeFromBottom (120));
-    r.removeFromBottom (8);
-    deviceViewport.setBounds (r);
-    deviceSelector->setSize (deviceViewport.getMaximumVisibleWidth(),
-                             juce::jmax (deviceSelector->getHeight(), r.getHeight()));
+
+    const int minLog = 80;
+    const int gap = 6;
+    deviceSelector->setSize (r.getWidth(), juce::jmax (1, deviceSelector->getHeight()));
+    const int selH = juce::jmax (1, deviceSelector->getHeight());
+    const int viewH = juce::jmin (selH, juce::jmax (0, r.getHeight() - minLog - gap));
+    deviceViewport.setBounds (r.removeFromTop (viewH));
+    deviceSelector->setSize (deviceViewport.getMaximumVisibleWidth(), selH);
+    r.removeFromTop (gap);
+    log.setBounds (r);
 }
 
 void MainComponent::applyMute (bool muted)

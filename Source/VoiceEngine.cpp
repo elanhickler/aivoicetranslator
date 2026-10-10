@@ -5,12 +5,66 @@
 
 namespace
 {
-juce::File modelFile()
+constexpr juce::int64 kMinModelBytes = 10 * 1024 * 1024;
+
+juce::File modelBesideExe()
 {
     return juce::File::getSpecialLocation (juce::File::currentExecutableFile)
         .getParentDirectory()
         .getChildFile ("models")
         .getChildFile ("ggml-base.en.bin");
+}
+
+juce::File modelInAppData()
+{
+    return juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
+        .getChildFile ("AIVoiceTranslator")
+        .getChildFile ("ggml-base.en.bin");
+}
+
+bool isUsableModel (const juce::File& f)
+{
+    return f.existsAsFile() && f.getSize() > kMinModelBytes;
+}
+
+juce::File modelFile()
+{
+    if (isUsableModel (modelBesideExe()))
+        return modelBesideExe();
+    if (isUsableModel (modelInAppData()))
+        return modelInAppData();
+    return modelBesideExe();
+}
+
+bool downloadModelTo (const juce::File& dest)
+{
+    dest.getParentDirectory().createDirectory();
+    dest.deleteFile();
+
+    juce::URL url ("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin");
+    auto opts = juce::URL::InputStreamOptions (juce::URL::ParameterHandling::inAddress)
+                    .withConnectionTimeoutMs (300000)
+                    .withNumRedirectsToFollow (8);
+    std::unique_ptr<juce::InputStream> in (url.createInputStream (opts));
+    if (in == nullptr)
+        return false;
+
+    juce::int64 written = 0;
+    {
+        juce::FileOutputStream out (dest);
+        if (out.failedToOpen())
+            return false;
+        written = out.writeFromInputStream (*in, -1);
+        out.flush();
+    }
+
+    if (written < kMinModelBytes)
+    {
+        dest.deleteFile();
+        return false;
+    }
+
+    return true;
 }
 
 juce::var makeMsg (const juce::String& role, const juce::String& content)
@@ -206,40 +260,16 @@ void VoiceEngine::run()
 
 bool VoiceEngine::ensureModel()
 {
-    auto file = modelFile();
-    if (file.existsAsFile() && file.getSize() > 10 * 1024 * 1024)
+    if (isUsableModel (modelFile()))
         return true;
 
-    file.getParentDirectory().createDirectory();
-    postStatus ("Downloading Whisper model (first run)...");
+    postStatus ("Downloading Whisper model (first run, ~140MB)...");
 
-    juce::URL url ("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin");
-    auto opts = juce::URL::InputStreamOptions (juce::URL::ParameterHandling::inAddress)
-                    .withConnectionTimeoutMs (120000)
-                    .withNumRedirectsToFollow (8);
-    std::unique_ptr<juce::InputStream> in (url.createInputStream (opts));
-    if (in == nullptr)
-    {
-        postStatus ("Download failed. Put ggml-base.en.bin in models/");
-        return false;
-    }
+    if (downloadModelTo (modelBesideExe()) || downloadModelTo (modelInAppData()))
+        return isUsableModel (modelFile());
 
-    juce::TemporaryFile tmp (file);
-    juce::FileOutputStream out (tmp.getFile());
-    if (out.failedToOpen() || out.writeFromInputStream (*in, -1) < 10 * 1024 * 1024)
-    {
-        postStatus ("Could not write Whisper model");
-        return false;
-    }
-
-    out.flush();
-    if (! tmp.overwriteTargetFileWithTemporary())
-    {
-        postStatus ("Could not install Whisper model");
-        return false;
-    }
-
-    return true;
+    postStatus ("Could not save Whisper model (not ooba). Need internet, or put ggml-base.en.bin in models/ next to the exe.");
+    return false;
 }
 
 juce::String VoiceEngine::transcribe (const std::vector<float>& audio16k)
