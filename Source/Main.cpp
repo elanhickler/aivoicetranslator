@@ -1,4 +1,5 @@
 #include "MainComponent.h"
+#include "CrashDump.h"
 
 class AIVoiceTranslatorApp final : public juce::JUCEApplication
 {
@@ -9,7 +10,17 @@ public:
 
     void initialise (const juce::String&) override
     {
+        installCrashHandler();
         mainWindow.reset (new MainWindow (getApplicationName()));
+    }
+
+    void unhandledException (const std::exception* e,
+                             const juce::String& sourceFilename,
+                             int lineNumber) override
+    {
+        writeCppExceptionReport (e != nullptr ? e->what() : "(unknown)",
+                                 sourceFilename.toRawUTF8(),
+                                 lineNumber);
     }
 
     void shutdown() override { mainWindow = nullptr; }

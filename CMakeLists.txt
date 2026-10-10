@@ -47,7 +47,8 @@ target_sources(AIVoiceTranslator
     PRIVATE
         Source/Main.cpp
         Source/MainComponent.cpp
-        Source/VoiceEngine.cpp)
+        Source/VoiceEngine.cpp
+        Source/CrashDump.cpp)
 
 target_include_directories(AIVoiceTranslator
     PRIVATE
@@ -70,3 +71,35 @@ target_link_libraries(AIVoiceTranslator
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags)
+
+if(WIN32)
+    target_link_libraries(AIVoiceTranslator PRIVATE dbghelp)
+
+    file(GLOB _vc_crt_dirs
+        "C:/Program Files/Microsoft Visual Studio/2022/*/VC/Redist/MSVC/*/x64/Microsoft.VC143.CRT")
+    if(_vc_crt_dirs)
+        list(SORT _vc_crt_dirs ORDER DESCENDING)
+        list(GET _vc_crt_dirs 0 _vc_crt_dir)
+        file(GLOB _vc_crt_dlls "${_vc_crt_dir}/*.dll")
+        get_filename_component(_vc_x64 "${_vc_crt_dir}" DIRECTORY)
+        get_filename_component(_vc_ver "${_vc_x64}" DIRECTORY)
+        file(GLOB _vc_omp_dlls "${_vc_x64}/Microsoft.VC143.OpenMP/*.dll")
+        set(_vc_redist "${_vc_ver}/vc_redist.x64.exe")
+
+        add_custom_command(TARGET AIVoiceTranslator POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                ${_vc_crt_dlls} ${_vc_omp_dlls}
+                "$<TARGET_FILE_DIR:AIVoiceTranslator>"
+            COMMENT "Copy MSVC runtime DLLs next to the exe")
+
+        if(EXISTS "${_vc_redist}")
+            add_custom_command(TARGET AIVoiceTranslator POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${_vc_redist}"
+                    "$<TARGET_FILE_DIR:AIVoiceTranslator>/vc_redist.x64.exe"
+                COMMENT "Copy VC++ redistributable installer")
+        endif()
+    else()
+        message(WARNING "MSVC VC143 CRT redistributable DLLs not found; the client may need vc_redist.x64.exe")
+    endif()
+endif()

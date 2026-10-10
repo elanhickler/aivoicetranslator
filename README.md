@@ -9,7 +9,10 @@ Need Git, CMake, and Visual Studio 2022 with **Desktop development with C++**.
 1. Clone this repo.
 2. Double-click `build.bat`.
 3. First run downloads dependencies and compiles. Later runs just rebuild.
-4. You get `bin\AIVoiceTranslator.exe`, and it launches.
+4. You get `bin\AIVoiceTranslator.exe` plus the VC++ runtime DLLs and `vc_redist.x64.exe`.
+5. Send the client the whole `bin` folder, not just the exe.
+
+Crashes write `crashes\crash-*.dmp` and `crash-*.txt` next to the exe.
 
 ## Start oobabooga (TextGen) with the API
 

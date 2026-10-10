@@ -7,5 +7,7 @@ build/
 bin/
 cmake-build-*/
 models/
+crashes/
+*.dmp
 *.ggml
 *.bin

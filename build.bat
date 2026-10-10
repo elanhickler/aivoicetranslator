@@ -33,6 +33,8 @@ if errorlevel 1 (
     pause
     exit /b 1
 )
+copy /Y "build\AIVoiceTranslator_artefacts\Release\*.dll" "bin\" >nul 2>nul
+copy /Y "build\AIVoiceTranslator_artefacts\Release\vc_redist.x64.exe" "bin\" >nul 2>nul
 
 echo.
 echo Built bin\AIVoiceTranslator.exe
