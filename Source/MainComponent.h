@@ -3,7 +3,7 @@
 #include "VoiceEngine.h"
 
 class MainComponent final : public juce::Component,
-                            private juce::Timer,
+                            private juce::Thread,
                             private VoiceEngine::Listener
 {
 public:
@@ -14,7 +14,7 @@ public:
     void resized() override;
 
 private:
-    void timerCallback() override;
+    void run() override;
     void engineStatus (const juce::String&) override;
     void engineHeard (const juce::String& userText) override;
     void engineReplied (const juce::String& aiText) override;
@@ -25,9 +25,10 @@ private:
     void browseTextGen();
     void startTextGen();
     void guessTextGen();
-    void checkApi();
+    void setApiState (bool up);
+    bool probeApi() const;
     juce::File settingsFile() const;
-    juce::URL apiProbeUrl() const;
+    void parseApiHostPort (juce::String& host, int& port) const;
 
     juce::AudioDeviceManager deviceManager;
     VoiceEngine engine;
@@ -48,6 +49,8 @@ private:
 
     bool apiUp = false;
     bool muted = false;
+    juce::String probeHost { "127.0.0.1" };
+    int probePort = 5000;
 
     void applyMute (bool shouldMute);
 

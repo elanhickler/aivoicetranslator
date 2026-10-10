@@ -1,4 +1,5 @@
 #include "MainComponent.h"
+#include <cmath>
 
 namespace
 {
@@ -8,7 +9,7 @@ constexpr int kRow = 26;
 constexpr int kLabelW = 56;
 }
 
-MainComponent::MainComponent()
+MainComponent::MainComponent() : juce::Thread ("api-ping")
 {
     juce::LookAndFeel::getDefaultLookAndFeel().setColour (
         juce::ResizableWindow::backgroundColourId, juce::Colour (0xff1e1e1e));
@@ -58,8 +59,9 @@ MainComponent::MainComponent()
     urlEditor.onFocusLost = [this]
     {
         engine.setApiUrl (urlEditor.getText().trim());
+        parseApiHostPort (probeHost, probePort);
         saveSettings();
-        checkApi();
+        notify();
     };
     addAndMakeVisible (urlEditor);
 
@@ -74,18 +76,20 @@ MainComponent::MainComponent()
     addAndMakeVisible (log);
 
     loadSettings();
+    parseApiHostPort (probeHost, probePort);
     if (textgenEditor.getText().trim().isEmpty())
         guessTextGen();
 
     applyMute (false);
-    checkApi();
-    startTimer (2500);
+    startThread();
     setSize (720, 620);
 }
 
 MainComponent::~MainComponent()
 {
-    stopTimer();
+    signalThreadShouldExit();
+    notify();
+    stopThread (1500);
     saveSettings();
     engine.setListening (false);
     deviceManager.removeAudioCallback (&engine);
@@ -123,18 +127,29 @@ void MainComponent::resized()
     r.removeFromTop (kGap);
 
     const int minLog = juce::jmax (160, r.getHeight() / 2);
-    deviceSelector->setSize (r.getWidth(), juce::jmax (1, deviceSelector->getHeight()));
+    const int innerW = r.getWidth();
+    if (std::abs (deviceSelector->getWidth() - innerW) > 1)
+        deviceSelector->setSize (innerW, juce::jmax (1, deviceSelector->getHeight()));
     const int selH = juce::jmax (1, deviceSelector->getHeight());
     const int viewH = juce::jmin (selH, juce::jmax (80, r.getHeight() - minLog - kGap));
     deviceViewport.setBounds (r.removeFromTop (viewH));
-    deviceSelector->setSize (deviceViewport.getMaximumVisibleWidth(), selH);
     r.removeFromTop (kGap);
     log.setBounds (r);
 }
 
-void MainComponent::timerCallback()
+void MainComponent::run()
 {
-    checkApi();
+    while (! threadShouldExit())
+    {
+        const bool up = probeApi();
+        juce::Component::SafePointer<MainComponent> safe (this);
+        juce::MessageManager::callAsync ([safe, up]
+        {
+            if (safe != nullptr)
+                safe->setApiState (up);
+        });
+        wait (4000);
+    }
 }
 
 void MainComponent::applyMute (bool shouldMute)
@@ -288,26 +303,28 @@ void MainComponent::startTextGen()
    #endif
 }
 
-juce::URL MainComponent::apiProbeUrl() const
+void MainComponent::parseApiHostPort (juce::String& host, int& port) const
 {
     juce::URL u (urlEditor.getText().trim());
-    auto origin = u.getScheme() + "://" + u.getDomain();
-    const int port = u.getPort();
-    if (port > 0)
-        origin += ":" + juce::String (port);
-    else if (u.getScheme() == "http")
-        origin += ":5000";
-    return juce::URL (origin + "/v1/models");
+    host = u.getDomain();
+    if (host.isEmpty())
+        host = "127.0.0.1";
+    port = u.getPort();
+    if (port <= 0)
+        port = 5000;
 }
 
-void MainComponent::checkApi()
+bool MainComponent::probeApi() const
 {
-    auto opts = juce::URL::InputStreamOptions (juce::URL::ParameterHandling::inAddress)
-                    .withConnectionTimeoutMs (700)
-                    .withNumRedirectsToFollow (0);
-    std::unique_ptr<juce::InputStream> in (apiProbeUrl().createInputStream (opts));
-    const bool up = in != nullptr;
+    juce::StreamingSocket sock;
+    const bool up = sock.connect (probeHost, probePort, 200);
+    if (up)
+        sock.close();
+    return up;
+}
 
+void MainComponent::setApiState (bool up)
+{
     if (up == apiUp && apiStateLabel.getText() != "API ?")
         return;
 
