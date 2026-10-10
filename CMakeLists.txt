@@ -73,7 +73,7 @@ target_link_libraries(AIVoiceTranslator
         juce::juce_recommended_warning_flags)
 
 if(WIN32)
-    target_link_libraries(AIVoiceTranslator PRIVATE dbghelp)
+    target_link_libraries(AIVoiceTranslator PRIVATE dbghelp ole32 sapi)
 
     file(GLOB _vc_crt_dirs
         "C:/Program Files/Microsoft Visual Studio/2022/*/VC/Redist/MSVC/*/x64/Microsoft.VC143.CRT")

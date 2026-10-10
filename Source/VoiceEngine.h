@@ -39,8 +39,11 @@ private:
     bool ensureModel();
     juce::String transcribe (const std::vector<float>& audio16k);
     juce::String askOoba (const juce::String& userText);
+    void speakReply (const juce::String& text);
     void postStatus (juce::String s);
     static std::vector<float> resampleTo16k (const float* in, int n, double srcRate);
+    static std::vector<float> resample (const float* in, int n, double srcRate, double dstRate);
+    static juce::String stripForSpeech (juce::String text);
 
     Listener* listener = nullptr;
     juce::String apiUrl { "http://127.0.0.1:5000/v1/chat/completions" };
@@ -55,6 +58,10 @@ private:
     std::vector<float> pending;
     double pendingRate = 16000.0;
     juce::WaitableEvent workReady;
+
+    std::vector<float> playback;
+    int playbackPos = 0;
+    juce::WaitableEvent playbackDone;
 
     bool speaking = false;
     int loudBlocks = 0;

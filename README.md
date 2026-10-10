@@ -51,6 +51,7 @@ If you used `--api-port 1234`, set this app’s Ooba API field to `http://127.0.
 1. Start oobabooga with `--api` as above, with a model loaded.
 2. Pick **CABLE Output** (or your mic) in this app.
 3. Talk. It is already listening. Mute if you need to.
-4. First run may download `ggml-base.en.bin` (~140MB) next to the exe.
+4. Pick an **output** device to hear the AI (speakers, or another Virtual Cable). It stays quiet while speaking so it does not transcribe itself.
+5. First run may download `ggml-base.en.bin` (~140MB) next to the exe.
 
 Default API: `http://127.0.0.1:5000/v1/chat/completions`

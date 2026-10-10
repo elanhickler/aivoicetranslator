@@ -2,6 +2,11 @@
 
 #include <whisper.h>
 #include <cmath>
+#include <cstdint>
+
+#if JUCE_WINDOWS
+ #include <sapi.h>
+#endif
 
 namespace
 {
@@ -87,6 +92,7 @@ VoiceEngine::~VoiceEngine()
     listening = false;
     signalThreadShouldExit();
     workReady.signal();
+    playbackDone.signal();
     stopThread (8000);
     if (ctx != nullptr)
         whisper_free (ctx);
@@ -118,6 +124,8 @@ void VoiceEngine::audioDeviceAboutToStart (juce::AudioIODevice* device)
     quietBlocks = 0;
     windowFilled = 0;
     windowEnergy = 0.0;
+    playback.clear();
+    playbackPos = 0;
 }
 
 void VoiceEngine::audioDeviceStopped() {}
@@ -129,7 +137,27 @@ void VoiceEngine::audioDeviceIOCallbackWithContext (const float* const* inputCha
                                                     int numSamples,
                                                     const juce::AudioIODeviceCallbackContext&)
 {
-    juce::ignoreUnused (outputChannelData, numOutputChannels);
+    bool finishedPlayback = false;
+    {
+        const juce::ScopedLock sl (lock);
+        for (int i = 0; i < numSamples; ++i)
+        {
+            float s = 0.0f;
+            if (playbackPos < (int) playback.size())
+                s = playback[(size_t) playbackPos++];
+            for (int ch = 0; ch < numOutputChannels; ++ch)
+                if (outputChannelData[ch] != nullptr)
+                    outputChannelData[ch][i] = s;
+        }
+        if (! playback.empty() && playbackPos >= (int) playback.size())
+        {
+            playback.clear();
+            playbackPos = 0;
+            finishedPlayback = true;
+        }
+    }
+    if (finishedPlayback)
+        playbackDone.signal();
 
     if (! listening.load() || busy.load() || numInputChannels < 1 || inputChannelData[0] == nullptr)
         return;
@@ -193,8 +221,17 @@ void VoiceEngine::audioDeviceIOCallbackWithContext (const float* const* inputCha
 
 void VoiceEngine::run()
 {
+   #if JUCE_WINDOWS
+    CoInitializeEx (nullptr, COINIT_MULTITHREADED);
+   #endif
+
     if (! ensureModel())
+    {
+       #if JUCE_WINDOWS
+        CoUninitialize();
+       #endif
         return;
+    }
 
     postStatus ("Loading Whisper...");
     ctx = whisper_init_from_file_with_params (modelFile().getFullPathName().toRawUTF8(),
@@ -202,6 +239,9 @@ void VoiceEngine::run()
     if (ctx == nullptr)
     {
         postStatus ("Failed to load Whisper model");
+       #if JUCE_WINDOWS
+        CoUninitialize();
+       #endif
         return;
     }
 
@@ -253,9 +293,19 @@ void VoiceEngine::run()
             juce::MessageManager::callAsync ([l, reply] { l->engineReplied (reply); });
         }
 
+        if (! reply.startsWithIgnoreCase ("(ooba") && reply.isNotEmpty())
+        {
+            postStatus ("Speaking...");
+            speakReply (reply);
+        }
+
         busy = false;
         postStatus (listening.load() ? "Listening" : "Idle");
     }
+
+   #if JUCE_WINDOWS
+    CoUninitialize();
+   #endif
 }
 
 bool VoiceEngine::ensureModel()
@@ -338,16 +388,130 @@ void VoiceEngine::postStatus (juce::String s)
 
 std::vector<float> VoiceEngine::resampleTo16k (const float* in, int n, double srcRate)
 {
+    return resample (in, n, srcRate, 16000.0);
+}
+
+std::vector<float> VoiceEngine::resample (const float* in, int n, double srcRate, double dstRate)
+{
     if (n <= 0)
         return {};
-    if (std::abs (srcRate - 16000.0) < 1.0)
+    if (std::abs (srcRate - dstRate) < 1.0)
         return { in, in + n };
 
-    const double ratio = srcRate / 16000.0;
+    const double ratio = srcRate / dstRate;
     const int outN = juce::jmax (1, (int) std::floor ((double) n / ratio));
     std::vector<float> out ((size_t) outN);
     juce::LagrangeInterpolator interp;
     interp.reset();
     interp.process (ratio, in, out.data(), outN);
     return out;
+}
+
+juce::String VoiceEngine::stripForSpeech (juce::String text)
+{
+    while (true)
+    {
+        const int start = text.indexOfIgnoreCase ("<think>");
+        if (start < 0)
+            break;
+        int end = text.indexOfIgnoreCase ("</think>");
+        if (end < 0)
+        {
+            text = text.substring (0, start);
+            break;
+        }
+        text = text.substring (0, start) + text.substring (end + 8);
+    }
+    return text.trim();
+}
+
+void VoiceEngine::speakReply (const juce::String& text)
+{
+    const auto spoken = stripForSpeech (text);
+    if (spoken.isEmpty())
+        return;
+
+    std::vector<float> pcm16k;
+
+   #if JUCE_WINDOWS
+    ISpVoice* voice = nullptr;
+    if (FAILED (CoCreateInstance (CLSID_SpVoice, nullptr, CLSCTX_ALL, IID_ISpVoice, (void**) &voice)) || voice == nullptr)
+        return;
+
+    IStream* mem = nullptr;
+    if (FAILED (CreateStreamOnHGlobal (nullptr, TRUE, &mem)) || mem == nullptr)
+    {
+        voice->Release();
+        return;
+    }
+
+    ISpStream* spStream = nullptr;
+    if (FAILED (CoCreateInstance (CLSID_SpStream, nullptr, CLSCTX_ALL, IID_ISpStream, (void**) &spStream)) || spStream == nullptr)
+    {
+        mem->Release();
+        voice->Release();
+        return;
+    }
+
+    WAVEFORMATEX fmt {};
+    fmt.wFormatTag = WAVE_FORMAT_PCM;
+    fmt.nChannels = 1;
+    fmt.nSamplesPerSec = 16000;
+    fmt.wBitsPerSample = 16;
+    fmt.nBlockAlign = 2;
+    fmt.nAvgBytesPerSec = 32000;
+
+    if (FAILED (spStream->SetBaseStream (mem, SPDFID_WaveFormatEx, &fmt)))
+    {
+        spStream->Release();
+        mem->Release();
+        voice->Release();
+        return;
+    }
+
+    voice->SetOutput (spStream, TRUE);
+    voice->Speak (spoken.toWideCharPointer(), SPF_DEFAULT | SPF_PURGEBEFORESPEAK, nullptr);
+
+    STATSTG st {};
+    mem->Stat (&st, STATFLAG_NONAME);
+    LARGE_INTEGER zero {};
+    mem->Seek (zero, STREAM_SEEK_SET, nullptr);
+
+    const ULONG bytes = st.cbSize.LowPart;
+    std::vector<char> raw ((size_t) bytes);
+    ULONG got = 0;
+    mem->Read (raw.data(), bytes, &got);
+
+    const int n = (int) (got / sizeof (int16_t));
+    pcm16k.resize ((size_t) n);
+    const auto* s16 = reinterpret_cast<const int16_t*> (raw.data());
+    for (int i = 0; i < n; ++i)
+        pcm16k[(size_t) i] = (float) s16[i] / 32768.0f;
+
+    spStream->Release();
+    mem->Release();
+    voice->Release();
+   #endif
+
+    if (pcm16k.empty())
+        return;
+
+    auto devicePcm = resample (pcm16k.data(), (int) pcm16k.size(), 16000.0, sampleRate);
+    {
+        const juce::ScopedLock sl (lock);
+        playback = std::move (devicePcm);
+        playbackPos = 0;
+    }
+
+    while (! threadShouldExit())
+    {
+        bool done = false;
+        {
+            const juce::ScopedLock sl (lock);
+            done = playback.empty();
+        }
+        if (done)
+            break;
+        playbackDone.wait (100);
+    }
 }

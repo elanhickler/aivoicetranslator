@@ -7,7 +7,7 @@ MainComponent::MainComponent()
 
     engine.setListener (this);
 
-    auto err = deviceManager.initialise (1, 0, nullptr, true);
+    auto err = deviceManager.initialise (1, 2, nullptr, true);
     if (err.isNotEmpty())
         statusLabel.setText (err, juce::dontSendNotification);
 
@@ -18,7 +18,7 @@ MainComponent::MainComponent()
     deviceManager.addAudioCallback (&engine);
 
     deviceSelector = std::make_unique<juce::AudioDeviceSelectorComponent> (
-        deviceManager, 1, 2, 0, 0, false, false, false, false);
+        deviceManager, 1, 2, 1, 2, false, false, false, false);
     deviceViewport.setViewedComponent (deviceSelector.get(), false);
     deviceViewport.setScrollBarsShown (true, false);
     addAndMakeVisible (deviceViewport);
@@ -135,6 +135,6 @@ void MainComponent::preferCableInput()
     auto setup = deviceManager.getAudioDeviceSetup();
     setup.inputDeviceName = names[cable];
     setup.useDefaultInputChannels = true;
-    setup.outputDeviceName.clear();
+    setup.useDefaultOutputChannels = true;
     deviceManager.setAudioDeviceSetup (setup, true);
 }
