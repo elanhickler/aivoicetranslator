@@ -19,7 +19,9 @@ MainComponent::MainComponent()
 
     deviceSelector = std::make_unique<juce::AudioDeviceSelectorComponent> (
         deviceManager, 1, 2, 0, 0, false, false, false, false);
-    addAndMakeVisible (*deviceSelector);
+    deviceViewport.setViewedComponent (deviceSelector.get(), false);
+    deviceViewport.setScrollBarsShown (true, false);
+    addAndMakeVisible (deviceViewport);
 
     listenButton.setClickingTogglesState (true);
     listenButton.onClick = [this]
@@ -42,11 +44,14 @@ MainComponent::MainComponent()
     urlEditor.setEscapeAndReturnKeysConsumed (false);
     addAndMakeVisible (urlEditor);
 
+    hintLabel.setText ("Speak after Listen. Pause to send.", juce::dontSendNotification);
+    hintLabel.setColour (juce::Label::textColourId, juce::Colours::grey);
+    addAndMakeVisible (hintLabel);
+
     log.setMultiLine (true);
     log.setReadOnly (true);
     log.setCaretVisible (false);
     log.setFont (juce::FontOptions (15.0f));
-    log.setTextToShowWhenEmpty ("Speak after Listen. Pause to send.", juce::Colours::grey);
     addAndMakeVisible (log);
 
     setSize (720, 640);
@@ -78,9 +83,12 @@ void MainComponent::resized()
 
     r.removeFromTop (12);
     const int selH = juce::jlimit (180, 260, r.getHeight() / 3);
-    deviceSelector->setBounds (r.removeFromTop (selH));
+    deviceViewport.setBounds (r.removeFromTop (selH));
+    deviceSelector->setSize (deviceViewport.getMaximumVisibleWidth(),
+                             juce::jmax (deviceSelector->getHeight(), selH));
 
-    r.removeFromTop (12);
+    r.removeFromTop (8);
+    hintLabel.setBounds (r.removeFromTop (22));
     log.setBounds (r);
 }
 

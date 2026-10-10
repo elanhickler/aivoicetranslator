@@ -22,11 +22,13 @@ private:
     juce::AudioDeviceManager deviceManager;
     VoiceEngine engine;
     std::unique_ptr<juce::AudioDeviceSelectorComponent> deviceSelector;
+    juce::Viewport deviceViewport;
 
     juce::TextButton listenButton { "Listen" };
     juce::Label statusLabel;
     juce::Label urlLabel { {}, "Ooba API" };
     juce::TextEditor urlEditor;
+    juce::Label hintLabel;
     juce::TextEditor log;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainComponent)
