@@ -145,9 +145,12 @@ void VoiceEngine::audioDeviceIOCallbackWithContext (const float* const* inputCha
             float s = 0.0f;
             if (playbackPos < (int) playback.size())
                 s = playback[(size_t) playbackPos++];
-            for (int ch = 0; ch < numOutputChannels; ++ch)
-                if (outputChannelData[ch] != nullptr)
-                    outputChannelData[ch][i] = s;
+            if (outputChannelData != nullptr)
+            {
+                for (int ch = 0; ch < numOutputChannels; ++ch)
+                    if (outputChannelData[ch] != nullptr)
+                        outputChannelData[ch][i] = s;
+            }
         }
         if (! playback.empty() && playbackPos >= (int) playback.size())
         {
@@ -159,7 +162,8 @@ void VoiceEngine::audioDeviceIOCallbackWithContext (const float* const* inputCha
     if (finishedPlayback)
         playbackDone.signal();
 
-    if (! listening.load() || busy.load() || numInputChannels < 1 || inputChannelData[0] == nullptr)
+    if (! listening.load() || busy.load()
+        || numInputChannels < 1 || inputChannelData == nullptr || inputChannelData[0] == nullptr)
         return;
 
     const float* left = inputChannelData[0];
@@ -222,7 +226,7 @@ void VoiceEngine::audioDeviceIOCallbackWithContext (const float* const* inputCha
 void VoiceEngine::run()
 {
    #if JUCE_WINDOWS
-    CoInitializeEx (nullptr, COINIT_MULTITHREADED);
+    CoInitializeEx (nullptr, COINIT_APARTMENTTHREADED);
    #endif
 
     if (! ensureModel())

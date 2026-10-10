@@ -74,6 +74,13 @@ target_link_libraries(AIVoiceTranslator
 
 if(WIN32)
     target_link_libraries(AIVoiceTranslator PRIVATE dbghelp ole32 sapi)
+    target_compile_options(AIVoiceTranslator PRIVATE /Zi)
+    target_link_options(AIVoiceTranslator PRIVATE /DEBUG:FULL /OPT:REF /OPT:ICF)
+    add_custom_command(TARGET AIVoiceTranslator POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_PDB_FILE:AIVoiceTranslator>"
+            "$<TARGET_FILE_DIR:AIVoiceTranslator>"
+        COMMENT "Copy PDB next to the exe for crash dumps")
 
     file(GLOB _vc_crt_dirs
         "C:/Program Files/Microsoft Visual Studio/2022/*/VC/Redist/MSVC/*/x64/Microsoft.VC143.CRT")
