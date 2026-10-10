@@ -4,6 +4,7 @@
 
 class MainComponent final : public juce::Component,
                             private juce::Thread,
+                            private juce::ChangeListener,
                             private VoiceEngine::Listener
 {
 public:
@@ -12,9 +13,15 @@ public:
 
     void paint (juce::Graphics&) override;
     void resized() override;
+    void parentHierarchyChanged() override;
+
+    juce::Rectangle<int> restoredWindowBounds() const { return windowBounds; }
+    bool hasRestoredWindowBounds() const { return haveWindowBounds; }
+    void captureWindowBounds();
 
 private:
     void run() override;
+    void changeListenerCallback (juce::ChangeBroadcaster*) override;
     void engineStatus (const juce::String&) override;
     void engineHeard (const juce::String& userText) override;
     void engineReplied (const juce::String& aiText) override;
@@ -49,8 +56,12 @@ private:
 
     bool apiUp = false;
     bool muted = false;
+    bool haveWindowBounds = false;
+    bool appliedWindowBounds = false;
+    juce::Rectangle<int> windowBounds { 0, 0, 720, 620 };
     juce::String probeHost { "127.0.0.1" };
     int probePort = 5000;
+    std::unique_ptr<juce::XmlElement> savedAudioXml;
 
     void applyMute (bool shouldMute);
 

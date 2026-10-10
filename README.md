@@ -51,6 +51,6 @@ If you used `--api-port 1234`, set this app’s Ooba API field to `http://127.0.
 2. Pick input (mic or **CABLE Output**) and output (speakers).
 3. Talk. Mute if you need to. First run may download `ggml-base.en.bin` (~140MB) next to the exe.
 
-The TextGen path is saved in `settings.xml` next to the exe.
+Settings (TextGen path, API URL, audio devices, window, mute) save to `settings.xml` next to the exe and `%AppData%\AIVoiceTranslator`.
 
 Default API: `http://127.0.0.1:5000/v1/chat/completions`

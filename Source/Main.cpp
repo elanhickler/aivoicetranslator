@@ -36,9 +36,22 @@ public:
                               allButtons)
         {
             setUsingNativeTitleBar (true);
-            setContentOwned (new MainComponent(), true);
+            auto* content = new MainComponent();
+            setContentOwned (content, true);
             setResizable (true, true);
-            centreWithSize (getWidth(), getHeight());
+            if (content->hasRestoredWindowBounds())
+            {
+                const auto b = content->restoredWindowBounds();
+                const auto* display = juce::Desktop::getInstance().getDisplays().getDisplayForRect (b);
+                if (display != nullptr && display->userBounds.toNearestInt().expanded (80).intersects (b))
+                    setBounds (b);
+                else
+                    centreWithSize (b.getWidth(), b.getHeight());
+            }
+            else
+            {
+                centreWithSize (getWidth(), getHeight());
+            }
             setVisible (true);
         }
 

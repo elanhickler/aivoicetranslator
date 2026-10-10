@@ -16,16 +16,6 @@ MainComponent::MainComponent() : juce::Thread ("api-ping")
 
     engine.setListener (this);
 
-    auto err = deviceManager.initialise (1, 2, nullptr, true);
-    if (err.isNotEmpty())
-        statusLabel.setText (err, juce::dontSendNotification);
-
-   #if JUCE_WINDOWS
-    deviceManager.setCurrentAudioDeviceType ("Windows Audio", true);
-   #endif
-    preferCableInput();
-    deviceManager.addAudioCallback (&engine);
-
     deviceSelector = std::make_unique<juce::AudioDeviceSelectorComponent> (
         deviceManager, 1, 2, 1, 2, false, false, false, false);
     deviceViewport.setViewedComponent (deviceSelector.get(), false);
@@ -33,7 +23,11 @@ MainComponent::MainComponent() : juce::Thread ("api-ping")
     addAndMakeVisible (deviceViewport);
 
     muteButton.setClickingTogglesState (true);
-    muteButton.onClick = [this] { applyMute (muteButton.getToggleState()); };
+    muteButton.onClick = [this]
+    {
+        applyMute (muteButton.getToggleState());
+        saveSettings();
+    };
     addAndMakeVisible (muteButton);
 
     statusLabel.setColour (juce::Label::textColourId, juce::Colours::lightgrey);
@@ -46,6 +40,7 @@ MainComponent::MainComponent() : juce::Thread ("api-ping")
     textgenLabel.setColour (juce::Label::textColourId, juce::Colours::lightgrey);
     addAndMakeVisible (textgenLabel);
     textgenEditor.setTextToShowWhenEmpty ("textgen.bat or textgen.exe", juce::Colours::grey);
+    textgenEditor.onFocusLost = [this] { saveSettings(); };
     addAndMakeVisible (textgenEditor);
     browseButton.onClick = [this] { browseTextGen(); };
     addAndMakeVisible (browseButton);
@@ -80,9 +75,25 @@ MainComponent::MainComponent() : juce::Thread ("api-ping")
     if (textgenEditor.getText().trim().isEmpty())
         guessTextGen();
 
-    applyMute (false);
+    auto err = deviceManager.initialise (1, 2, savedAudioXml.get(), true);
+    if (err.isNotEmpty())
+        statusLabel.setText (err, juce::dontSendNotification);
+
+   #if JUCE_WINDOWS
+    if (savedAudioXml == nullptr)
+        deviceManager.setCurrentAudioDeviceType ("Windows Audio", true);
+   #endif
+    if (savedAudioXml == nullptr)
+        preferCableInput();
+
+    deviceManager.addAudioCallback (&engine);
+    deviceManager.addChangeListener (this);
+    savedAudioXml.reset();
+
+    applyMute (muted);
     startThread();
-    setSize (720, 620);
+    setSize (haveWindowBounds ? windowBounds.getWidth() : 720,
+             haveWindowBounds ? windowBounds.getHeight() : 620);
 }
 
 MainComponent::~MainComponent()
@@ -90,8 +101,10 @@ MainComponent::~MainComponent()
     signalThreadShouldExit();
     notify();
     stopThread (1500);
+    captureWindowBounds();
     saveSettings();
     engine.setListening (false);
+    deviceManager.removeChangeListener (this);
     deviceManager.removeAudioCallback (&engine);
 }
 
@@ -188,6 +201,33 @@ void MainComponent::appendLog (const juce::String& line)
     log.moveCaretToEnd();
 }
 
+void MainComponent::changeListenerCallback (juce::ChangeBroadcaster*)
+{
+    saveSettings();
+}
+
+void MainComponent::parentHierarchyChanged()
+{
+    if (appliedWindowBounds || ! haveWindowBounds)
+        return;
+    if (auto* w = findParentComponentOfClass<juce::DocumentWindow>())
+    {
+        appliedWindowBounds = true;
+        auto area = juce::Desktop::getInstance().getDisplays().getDisplayForRect (windowBounds);
+        if (area != nullptr && area->userBounds.toNearestInt().expanded (80).intersects (windowBounds))
+            w->setBounds (windowBounds);
+    }
+}
+
+void MainComponent::captureWindowBounds()
+{
+    if (auto* w = findParentComponentOfClass<juce::DocumentWindow>())
+    {
+        windowBounds = w->getBounds();
+        haveWindowBounds = true;
+    }
+}
+
 void MainComponent::preferCableInput()
 {
     auto* type = deviceManager.getCurrentDeviceTypeObject();
@@ -211,9 +251,19 @@ void MainComponent::preferCableInput()
 
 juce::File MainComponent::settingsFile() const
 {
-    return juce::File::getSpecialLocation (juce::File::currentExecutableFile)
-        .getParentDirectory()
-        .getChildFile ("settings.xml");
+    const auto portable = juce::File::getSpecialLocation (juce::File::currentExecutableFile)
+                              .getParentDirectory()
+                              .getChildFile ("settings.xml");
+    if (portable.existsAsFile())
+        return portable;
+
+    const auto appdata = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
+                             .getChildFile ("AIVoiceTranslator")
+                             .getChildFile ("settings.xml");
+    if (appdata.existsAsFile())
+        return appdata;
+
+    return portable;
 }
 
 void MainComponent::loadSettings()
@@ -228,6 +278,25 @@ void MainComponent::loadSettings()
         textgenEditor.setText (path);
     if (api.isNotEmpty())
         urlEditor.setText (api);
+
+    muted = xml->getBoolAttribute ("muted", false);
+
+    if (xml->hasAttribute ("x"))
+    {
+        windowBounds = { xml->getIntAttribute ("x"),
+                         xml->getIntAttribute ("y"),
+                         xml->getIntAttribute ("w", 720),
+                         xml->getIntAttribute ("h", 620) };
+        haveWindowBounds = windowBounds.getWidth() >= 400 && windowBounds.getHeight() >= 300;
+    }
+
+    if (auto* audio = xml->getChildElement (0))
+    {
+        if (audio->hasTagName ("DEVICESETUP") || audio->hasTagName ("audio"))
+            savedAudioXml = std::make_unique<juce::XmlElement> (*audio);
+    }
+    if (auto* audio = xml->getChildByName ("DEVICESETUP"))
+        savedAudioXml = std::make_unique<juce::XmlElement> (*audio);
 }
 
 void MainComponent::saveSettings()
@@ -235,7 +304,29 @@ void MainComponent::saveSettings()
     juce::XmlElement root ("settings");
     root.setAttribute ("textgen", textgenEditor.getText().trim());
     root.setAttribute ("api", urlEditor.getText().trim());
-    root.writeTo (settingsFile());
+    root.setAttribute ("muted", muted);
+    root.setAttribute ("x", windowBounds.getX());
+    root.setAttribute ("y", windowBounds.getY());
+    root.setAttribute ("w", windowBounds.getWidth());
+    root.setAttribute ("h", windowBounds.getHeight());
+
+    if (auto state = deviceManager.createStateXml())
+        root.addChildElement (new juce::XmlElement (*state));
+
+    auto write = [&root] (juce::File file)
+    {
+        file.getParentDirectory().createDirectory();
+        return root.writeTo (file);
+    };
+
+    const auto portable = juce::File::getSpecialLocation (juce::File::currentExecutableFile)
+                              .getParentDirectory()
+                              .getChildFile ("settings.xml");
+    const auto appdata = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
+                             .getChildFile ("AIVoiceTranslator")
+                             .getChildFile ("settings.xml");
+    write (portable);
+    write (appdata);
 }
 
 void MainComponent::guessTextGen()
