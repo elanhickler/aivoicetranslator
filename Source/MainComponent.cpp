@@ -1,5 +1,13 @@
 #include "MainComponent.h"
 
+namespace
+{
+constexpr int kPad = 8;
+constexpr int kGap = 6;
+constexpr int kRow = 26;
+constexpr int kLabelW = 56;
+}
+
 MainComponent::MainComponent()
 {
     juce::LookAndFeel::getDefaultLookAndFeel().setColour (
@@ -30,10 +38,29 @@ MainComponent::MainComponent()
     statusLabel.setColour (juce::Label::textColourId, juce::Colours::lightgrey);
     addAndMakeVisible (statusLabel);
 
-    urlLabel.attachToComponent (&urlEditor, true);
+    apiStateLabel.setJustificationType (juce::Justification::centredRight);
+    apiStateLabel.setColour (juce::Label::textColourId, juce::Colours::orange);
+    addAndMakeVisible (apiStateLabel);
+
+    textgenLabel.setColour (juce::Label::textColourId, juce::Colours::lightgrey);
+    addAndMakeVisible (textgenLabel);
+    textgenEditor.setTextToShowWhenEmpty ("textgen.bat or textgen.exe", juce::Colours::grey);
+    addAndMakeVisible (textgenEditor);
+    browseButton.onClick = [this] { browseTextGen(); };
+    addAndMakeVisible (browseButton);
+    startButton.onClick = [this] { startTextGen(); };
+    addAndMakeVisible (startButton);
+
+    urlLabel.setColour (juce::Label::textColourId, juce::Colours::lightgrey);
     addAndMakeVisible (urlLabel);
     urlEditor.setText ("http://127.0.0.1:5000/v1/chat/completions");
     urlEditor.setEscapeAndReturnKeysConsumed (false);
+    urlEditor.onFocusLost = [this]
+    {
+        engine.setApiUrl (urlEditor.getText().trim());
+        saveSettings();
+        checkApi();
+    };
     addAndMakeVisible (urlEditor);
 
     log.setMultiLine (true);
@@ -42,16 +69,24 @@ MainComponent::MainComponent()
     log.setScrollbarsShown (true);
     log.setFont (juce::FontOptions (15.0f));
     log.setColour (juce::TextEditor::backgroundColourId, juce::Colour (0xff141414));
-    log.setColour (juce::TextEditor::outlineColourId, juce::Colours::transparentBlack);
-    log.setColour (juce::TextEditor::focusedOutlineColourId, juce::Colours::transparentBlack);
+    log.setColour (juce::TextEditor::outlineColourId, juce::Colour (0xff333333));
+    log.setColour (juce::TextEditor::focusedOutlineColourId, juce::Colour (0xff333333));
     addAndMakeVisible (log);
 
+    loadSettings();
+    if (textgenEditor.getText().trim().isEmpty())
+        guessTextGen();
+
     applyMute (false);
-    setSize (720, 560);
+    checkApi();
+    startTimer (2500);
+    setSize (720, 620);
 }
 
 MainComponent::~MainComponent()
 {
+    stopTimer();
+    saveSettings();
     engine.setListening (false);
     deviceManager.removeAudioCallback (&engine);
 }
@@ -63,42 +98,62 @@ void MainComponent::paint (juce::Graphics& g)
 
 void MainComponent::resized()
 {
-    auto r = getLocalBounds().reduced (12);
-    auto top = r.removeFromTop (32);
-    muteButton.setBounds (top.removeFromLeft (100));
-    top.removeFromLeft (10);
+    auto r = getLocalBounds().reduced (kPad);
+
+    auto top = r.removeFromTop (kRow);
+    muteButton.setBounds (top.removeFromLeft (72));
+    top.removeFromLeft (kGap);
+    apiStateLabel.setBounds (top.removeFromRight (72));
     statusLabel.setBounds (top);
 
-    r.removeFromTop (12);
-    auto urlRow = r.removeFromTop (28);
-    urlRow.removeFromLeft (80);
-    urlEditor.setBounds (urlRow);
+    r.removeFromTop (kGap);
+    auto tg = r.removeFromTop (kRow);
+    textgenLabel.setBounds (tg.removeFromLeft (kLabelW));
+    startButton.setBounds (tg.removeFromRight (64));
+    tg.removeFromRight (kGap);
+    browseButton.setBounds (tg.removeFromRight (72));
+    tg.removeFromRight (kGap);
+    textgenEditor.setBounds (tg);
 
-    r.removeFromTop (12);
+    r.removeFromTop (kGap);
+    auto api = r.removeFromTop (kRow);
+    urlLabel.setBounds (api.removeFromLeft (kLabelW));
+    urlEditor.setBounds (api);
 
-    const int minLog = 80;
-    const int gap = 6;
+    r.removeFromTop (kGap);
+
+    const int minLog = juce::jmax (160, r.getHeight() / 2);
     deviceSelector->setSize (r.getWidth(), juce::jmax (1, deviceSelector->getHeight()));
     const int selH = juce::jmax (1, deviceSelector->getHeight());
-    const int viewH = juce::jmin (selH, juce::jmax (0, r.getHeight() - minLog - gap));
+    const int viewH = juce::jmin (selH, juce::jmax (80, r.getHeight() - minLog - kGap));
     deviceViewport.setBounds (r.removeFromTop (viewH));
     deviceSelector->setSize (deviceViewport.getMaximumVisibleWidth(), selH);
-    r.removeFromTop (gap);
+    r.removeFromTop (kGap);
     log.setBounds (r);
 }
 
-void MainComponent::applyMute (bool muted)
+void MainComponent::timerCallback()
 {
+    checkApi();
+}
+
+void MainComponent::applyMute (bool shouldMute)
+{
+    muted = shouldMute;
     engine.setApiUrl (urlEditor.getText().trim());
-    engine.setListening (! muted);
-    muteButton.setToggleState (muted, juce::dontSendNotification);
-    muteButton.setButtonText (muted ? "Unmute" : "Mute");
-    statusLabel.setText (muted ? "Muted" : "Listening", juce::dontSendNotification);
+    engine.setListening (! shouldMute);
+    muteButton.setToggleState (shouldMute, juce::dontSendNotification);
+    muteButton.setButtonText (shouldMute ? "Unmute" : "Mute");
+    if (shouldMute)
+        statusLabel.setText ("Muted", juce::dontSendNotification);
+    else if (statusLabel.getText() == "Muted")
+        statusLabel.setText ("Listening", juce::dontSendNotification);
 }
 
 void MainComponent::engineStatus (const juce::String& s)
 {
-    statusLabel.setText (s, juce::dontSendNotification);
+    if (! muted)
+        statusLabel.setText (s, juce::dontSendNotification);
 }
 
 void MainComponent::engineHeard (const juce::String& userText)
@@ -137,4 +192,130 @@ void MainComponent::preferCableInput()
     setup.useDefaultInputChannels = true;
     setup.useDefaultOutputChannels = true;
     deviceManager.setAudioDeviceSetup (setup, true);
+}
+
+juce::File MainComponent::settingsFile() const
+{
+    return juce::File::getSpecialLocation (juce::File::currentExecutableFile)
+        .getParentDirectory()
+        .getChildFile ("settings.xml");
+}
+
+void MainComponent::loadSettings()
+{
+    auto xml = juce::XmlDocument::parse (settingsFile());
+    if (xml == nullptr)
+        return;
+
+    const auto path = xml->getStringAttribute ("textgen");
+    const auto api = xml->getStringAttribute ("api");
+    if (path.isNotEmpty())
+        textgenEditor.setText (path);
+    if (api.isNotEmpty())
+        urlEditor.setText (api);
+}
+
+void MainComponent::saveSettings()
+{
+    juce::XmlElement root ("settings");
+    root.setAttribute ("textgen", textgenEditor.getText().trim());
+    root.setAttribute ("api", urlEditor.getText().trim());
+    root.writeTo (settingsFile());
+}
+
+void MainComponent::guessTextGen()
+{
+    auto dir = juce::File::getSpecialLocation (juce::File::currentExecutableFile).getParentDirectory();
+    for (int up = 0; up < 5; ++up)
+    {
+        for (const auto& child : dir.findChildFiles (juce::File::findDirectories, false, "*"))
+        {
+            if (! child.getFileName().containsIgnoreCase ("textgen"))
+                continue;
+            for (const auto& name : { "textgen.bat", "textgen.exe", "textgen.cmd" })
+            {
+                auto f = child.getChildFile (name);
+                if (f.existsAsFile())
+                {
+                    textgenEditor.setText (f.getFullPathName());
+                    saveSettings();
+                    return;
+                }
+            }
+        }
+        dir = dir.getParentDirectory();
+    }
+}
+
+void MainComponent::browseTextGen()
+{
+    auto start = juce::File (textgenEditor.getText().trim());
+    if (! start.existsAsFile())
+        start = juce::File::getSpecialLocation (juce::File::userHomeDirectory);
+
+    chooser = std::make_unique<juce::FileChooser> (
+        "Locate textgen.bat or textgen.exe", start, "*.bat;*.cmd;*.exe");
+
+    chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                          [this] (const juce::FileChooser& c)
+                          {
+                              auto f = c.getResult();
+                              if (f.existsAsFile())
+                              {
+                                  textgenEditor.setText (f.getFullPathName());
+                                  saveSettings();
+                              }
+                          });
+}
+
+void MainComponent::startTextGen()
+{
+    auto f = juce::File (textgenEditor.getText().trim());
+    if (! f.existsAsFile())
+    {
+        browseTextGen();
+        return;
+    }
+
+    saveSettings();
+    const auto dir = f.getParentDirectory().getFullPathName();
+
+   #if JUCE_WINDOWS
+    juce::Process::openDocument ("cmd.exe",
+                                 "/c start \"TextGen\" /D \"" + dir + "\" \"" + f.getFullPathName() + "\"");
+   #else
+    f.startAsProcess();
+   #endif
+}
+
+juce::URL MainComponent::apiProbeUrl() const
+{
+    juce::URL u (urlEditor.getText().trim());
+    auto origin = u.getScheme() + "://" + u.getDomain();
+    const int port = u.getPort();
+    if (port > 0)
+        origin += ":" + juce::String (port);
+    else if (u.getScheme() == "http")
+        origin += ":5000";
+    return juce::URL (origin + "/v1/models");
+}
+
+void MainComponent::checkApi()
+{
+    auto opts = juce::URL::InputStreamOptions (juce::URL::ParameterHandling::inAddress)
+                    .withConnectionTimeoutMs (700)
+                    .withNumRedirectsToFollow (0);
+    std::unique_ptr<juce::InputStream> in (apiProbeUrl().createInputStream (opts));
+    const bool up = in != nullptr;
+
+    if (up == apiUp && apiStateLabel.getText() != "API ?")
+        return;
+
+    apiUp = up;
+    apiStateLabel.setText (up ? "API up" : "API down", juce::dontSendNotification);
+    apiStateLabel.setColour (juce::Label::textColourId,
+                             up ? juce::Colours::lightgreen : juce::Colours::orange);
+
+    if (! up && log.getText().isEmpty())
+        log.setText ("API down. Browse to textgen.bat / textgen.exe, click Start, then Load a model in TextGen.\n");
 }
