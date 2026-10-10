@@ -9,10 +9,15 @@ include(FetchContent)
 
 set(JUCE_DIR "" CACHE PATH "Path to a JUCE checkout")
 if(NOT JUCE_DIR)
-    set(_sibling "${CMAKE_CURRENT_SOURCE_DIR}/../soemdsp-sandbox-audioplugin/libs/JUCE")
-    if(EXISTS "${_sibling}/CMakeLists.txt")
-        set(JUCE_DIR "${_sibling}")
-    endif()
+    foreach(_rel IN ITEMS
+            "../soemdsp-sandbox-audioplugin/libs/JUCE"
+            "../../soemdsp-sandbox-audioplugin/libs/JUCE")
+        set(_try "${CMAKE_CURRENT_SOURCE_DIR}/${_rel}")
+        if(EXISTS "${_try}/CMakeLists.txt")
+            set(JUCE_DIR "${_try}")
+            break()
+        endif()
+    endforeach()
 endif()
 
 if(JUCE_DIR)
