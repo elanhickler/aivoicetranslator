@@ -23,18 +23,10 @@ MainComponent::MainComponent()
     deviceViewport.setScrollBarsShown (true, false);
     addAndMakeVisible (deviceViewport);
 
-    listenButton.setClickingTogglesState (true);
-    listenButton.onClick = [this]
-    {
-        engine.setApiUrl (urlEditor.getText().trim());
-        const bool on = listenButton.getToggleState();
-        engine.setListening (on);
-        listenButton.setButtonText (on ? "Listening" : "Listen");
-        statusLabel.setText (on ? "Listening" : "Idle", juce::dontSendNotification);
-    };
-    addAndMakeVisible (listenButton);
+    muteButton.setClickingTogglesState (true);
+    muteButton.onClick = [this] { applyMute (muteButton.getToggleState()); };
+    addAndMakeVisible (muteButton);
 
-    statusLabel.setText ("Idle", juce::dontSendNotification);
     statusLabel.setColour (juce::Label::textColourId, juce::Colours::lightgrey);
     addAndMakeVisible (statusLabel);
 
@@ -44,17 +36,18 @@ MainComponent::MainComponent()
     urlEditor.setEscapeAndReturnKeysConsumed (false);
     addAndMakeVisible (urlEditor);
 
-    hintLabel.setText ("Speak after Listen. Pause to send.", juce::dontSendNotification);
-    hintLabel.setColour (juce::Label::textColourId, juce::Colours::grey);
-    addAndMakeVisible (hintLabel);
-
     log.setMultiLine (true);
     log.setReadOnly (true);
     log.setCaretVisible (false);
+    log.setScrollbarsShown (true);
     log.setFont (juce::FontOptions (15.0f));
+    log.setColour (juce::TextEditor::backgroundColourId, juce::Colour (0xff141414));
+    log.setColour (juce::TextEditor::outlineColourId, juce::Colours::transparentBlack);
+    log.setColour (juce::TextEditor::focusedOutlineColourId, juce::Colours::transparentBlack);
     addAndMakeVisible (log);
 
-    setSize (720, 640);
+    applyMute (false);
+    setSize (720, 560);
 }
 
 MainComponent::~MainComponent()
@@ -72,7 +65,7 @@ void MainComponent::resized()
 {
     auto r = getLocalBounds().reduced (12);
     auto top = r.removeFromTop (32);
-    listenButton.setBounds (top.removeFromLeft (140));
+    muteButton.setBounds (top.removeFromLeft (100));
     top.removeFromLeft (10);
     statusLabel.setBounds (top);
 
@@ -82,14 +75,20 @@ void MainComponent::resized()
     urlEditor.setBounds (urlRow);
 
     r.removeFromTop (12);
-    const int selH = juce::jlimit (180, 260, r.getHeight() / 3);
-    deviceViewport.setBounds (r.removeFromTop (selH));
+    log.setBounds (r.removeFromBottom (120));
+    r.removeFromBottom (8);
+    deviceViewport.setBounds (r);
     deviceSelector->setSize (deviceViewport.getMaximumVisibleWidth(),
-                             juce::jmax (deviceSelector->getHeight(), selH));
+                             juce::jmax (deviceSelector->getHeight(), r.getHeight()));
+}
 
-    r.removeFromTop (8);
-    hintLabel.setBounds (r.removeFromTop (22));
-    log.setBounds (r);
+void MainComponent::applyMute (bool muted)
+{
+    engine.setApiUrl (urlEditor.getText().trim());
+    engine.setListening (! muted);
+    muteButton.setToggleState (muted, juce::dontSendNotification);
+    muteButton.setButtonText (muted ? "Unmute" : "Mute");
+    statusLabel.setText (muted ? "Muted" : "Listening", juce::dontSendNotification);
 }
 
 void MainComponent::engineStatus (const juce::String& s)

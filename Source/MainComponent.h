@@ -24,12 +24,13 @@ private:
     std::unique_ptr<juce::AudioDeviceSelectorComponent> deviceSelector;
     juce::Viewport deviceViewport;
 
-    juce::TextButton listenButton { "Listen" };
+    juce::TextButton muteButton { "Mute" };
     juce::Label statusLabel;
     juce::Label urlLabel { {}, "Ooba API" };
     juce::TextEditor urlEditor;
-    juce::Label hintLabel;
     juce::TextEditor log;
+
+    void applyMute (bool muted);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainComponent)
 };

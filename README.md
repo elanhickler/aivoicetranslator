@@ -47,7 +47,7 @@ If you used `--api-port 1234`, set this app’s Ooba API field to `http://127.0.
 
 1. Start oobabooga with `--api` as above, with a model loaded.
 2. Pick **CABLE Output** (or your mic) in this app.
-3. Press **Listen**, talk, pause.
-4. First Listen may download `ggml-base.en.bin` (~140MB) next to the exe.
+3. Talk. It is already listening. Mute if you need to.
+4. First run may download `ggml-base.en.bin` (~140MB) next to the exe.
 
 Default API: `http://127.0.0.1:5000/v1/chat/completions`
